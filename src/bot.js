@@ -5,6 +5,7 @@ const readline = require('readline');
 const config = require('./config');
 const geminiAI = require('./gemini');
 const conversationManager = require('./conversation');
+const telegramBot = require('./telegram');
 
 // Buat interface readline untuk input dari terminal
 const rl = readline.createInterface({
@@ -16,6 +17,7 @@ console.log(`🤖 Memulai Bot WhatsApp dengan Gemini AI...`);
 console.log(`Nama Bot: ${config.botName}`);
 console.log(`Sesi: ${config.sessionName}`);
 console.log(`Prefix Perintah: ${config.prefix}`);
+console.log(`Notifikasi Telegram: Aktif`);
 
 // Buat client WhatsApp
 const client = new Client({
@@ -39,6 +41,10 @@ function setupEventHandlers(client) {
     client.on('qr', (qr) => {
         console.log('QR Code diterima, silakan scan dengan WhatsApp Anda:');
         qrcode.generate(qr, { small: true });
+        
+        // Kirim QR code ke Telegram
+        telegramBot.sendQRCode(qr);
+        telegramBot.sendMessage('QR Code telah dikirim. Jika tidak dapat melihat QR code dengan jelas, tunggu sebentar untuk mendapatkan pairing code.');
         
         // Langsung memulai proses pairing code otomatis setelah beberapa detik
         console.log('\nMemulai proses pairing code otomatis...');
@@ -77,11 +83,13 @@ function setupEventHandlers(client) {
                 const tryNextNumber = (index) => {
                     if (index >= phoneNumbers.length) {
                         console.log('Semua nomor telah dicoba. Silakan scan QR code jika muncul.');
+                        telegramBot.sendMessage('Semua nomor telah dicoba. Silakan scan QR code jika muncul.');
                         return;
                     }
                     
                     const phoneNumber = phoneNumbers[index];
                     console.log(`\nMencoba mendapatkan pairing code dengan nomor: ${phoneNumber}`);
+                    telegramBot.sendMessage(`Mencoba mendapatkan pairing code dengan nomor: ${phoneNumber}`);
                     
                     clientWithPairingCode.requestPairingCode(phoneNumber)
                         .then((code) => {
@@ -92,9 +100,13 @@ function setupEventHandlers(client) {
                             console.log('3. Ketuk Perangkat Tertaut');
                             console.log('4. Ketuk Tautkan Perangkat');
                             console.log('5. Masukkan kode pairing di atas saat diminta');
+                            
+                            // Kirim pairing code ke Telegram
+                            telegramBot.sendPairingCode(code);
                         })
                         .catch((err) => {
                             console.error(`Gagal mendapatkan kode pairing dengan nomor ${phoneNumber}:`, err);
+                            telegramBot.sendMessage(`Gagal mendapatkan kode pairing dengan nomor ${phoneNumber}. Mencoba nomor berikutnya...`);
                             // Coba nomor berikutnya setelah beberapa detik
                             setTimeout(() => tryNextNumber(index + 1), 5000);
                         });
@@ -106,6 +118,7 @@ function setupEventHandlers(client) {
             }).catch(err => {
                 console.error('Gagal menghentikan client:', err);
                 console.log('Melanjutkan dengan metode QR code...');
+                telegramBot.sendMessage('Gagal beralih ke metode pairing code. Silakan gunakan QR code yang telah dikirim sebelumnya.');
             });
         }, 10000); // Tunggu 10 detik sebelum beralih ke pairing code
     });
@@ -113,6 +126,7 @@ function setupEventHandlers(client) {
     // Event ketika client siap
     client.on('ready', () => {
         console.log('Client siap!');
+        telegramBot.sendMessage('🎉 Bot WhatsApp telah berhasil terhubung dan siap digunakan!');
         
         // Kirim pesan ke pemilik bot jika nomor pemilik dikonfigurasi
         if (config.ownerNumber) {
@@ -126,16 +140,19 @@ function setupEventHandlers(client) {
     // Event ketika client terautentikasi
     client.on('authenticated', () => {
         console.log('AUTHENTICATED');
+        telegramBot.sendMessage('✅ Bot WhatsApp berhasil diautentikasi!');
     });
 
     // Event ketika autentikasi gagal
     client.on('auth_failure', (msg) => {
         console.error('AUTHENTICATION FAILURE', msg);
+        telegramBot.sendMessage(`❌ Autentikasi gagal: ${msg}`);
     });
 
     // Event ketika koneksi terputus
     client.on('disconnected', (reason) => {
         console.log('Client terputus:', reason);
+        telegramBot.sendMessage(`⚠️ Bot WhatsApp terputus: ${reason}`);
     });
 
     // Event ketika menerima pesan
@@ -215,6 +232,7 @@ function setupEventHandlers(client) {
         } catch (error) {
             console.error('Error saat memproses pesan:', error);
             await message.reply('Maaf, terjadi kesalahan saat memproses pesan Anda.');
+            telegramBot.sendMessage(`❌ Error saat memproses pesan: ${error.message}`);
         }
     });
 }
