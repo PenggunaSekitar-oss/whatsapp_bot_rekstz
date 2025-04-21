@@ -1,0 +1,28 @@
+{
+  "name": "whatsapp_bot_project",
+  "version": "1.0.0",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "start": "node start.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "gemini",
+    "ai",
+    "assistant"
+  ],
+  "author": "",
+  "license": "ISC",
+  "description": "Bot WhatsApp dengan integrasi Gemini AI untuk asisten pribadi",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.0",
+    "puppeteer": "^24.6.1",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.27.0"
+  }
+}
