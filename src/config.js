@@ -11,7 +11,7 @@ module.exports = {
     ownerNumber: '', // Nomor pemilik bot (format: 62812345678)
     
     // Pesan selamat datang
-    welcomeMessage: 'Halo! Saya adalah asisten pribadi Anda yang didukung oleh Gemini AI. Apa yang dapat saya bantu hari ini?',
+    welcomeMessage: 'Halo! Saya adalah Rektstz-v01 yang dibuat oleh Mhaminn. Apa yang dapat saya bantu hari ini?',
     
     // Prefix untuk perintah bot (opsional)
     prefix: '!',
