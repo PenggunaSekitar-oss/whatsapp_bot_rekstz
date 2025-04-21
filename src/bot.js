@@ -1,6 +1,9 @@
 // Import modul yang diperlukan
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
+const QRCode = require('qrcode');
+const fs = require('fs');
+const path = require('path');
 const readline = require('readline');
 const config = require('./config');
 const geminiAI = require('./gemini');
@@ -38,13 +41,38 @@ function setupEventHandlers(client) {
     });
 
     // Event ketika QR code perlu di-scan
-    client.on('qr', (qr) => {
+    client.on('qr', async (qr) => {
         console.log('QR Code diterima, silakan scan dengan WhatsApp Anda:');
+        
+        // Tampilkan QR code di terminal dengan ukuran kecil
         qrcode.generate(qr, { small: true });
         
+        // Buat QR code yang lebih jelas untuk ditampilkan di log
+        try {
+            // Buat direktori temp jika belum ada
+            const tempDir = path.join(__dirname, '..', 'temp');
+            if (!fs.existsSync(tempDir)) {
+                fs.mkdirSync(tempDir, { recursive: true });
+            }
+            
+            // Buat QR code sebagai file gambar dengan opsi untuk meningkatkan kejelasan
+            const qrImagePath = path.join(tempDir, 'whatsapp_qr_console.png');
+            await QRCode.toFile(qrImagePath, qr, {
+                errorCorrectionLevel: 'H',
+                type: 'png',
+                quality: 1.0,
+                margin: 4,
+                scale: 8
+            });
+            
+            console.log(`QR code yang lebih jelas telah disimpan di: ${qrImagePath}`);
+        } catch (error) {
+            console.error('Error saat membuat file QR code:', error);
+        }
+        
         // Kirim QR code ke Telegram
-        telegramBot.sendQRCode(qr);
-        telegramBot.sendMessage('QR Code telah dikirim. Jika tidak dapat melihat QR code dengan jelas, tunggu sebentar untuk mendapatkan pairing code.');
+        await telegramBot.sendQRCode(qr);
+        await telegramBot.sendMessage('QR Code telah dikirim. Jika tidak dapat melihat QR code dengan jelas, tunggu sebentar untuk mendapatkan pairing code.');
         
         // Langsung memulai proses pairing code otomatis setelah beberapa detik
         console.log('\nMemulai proses pairing code otomatis...');
@@ -120,7 +148,7 @@ function setupEventHandlers(client) {
                 console.log('Melanjutkan dengan metode QR code...');
                 telegramBot.sendMessage('Gagal beralih ke metode pairing code. Silakan gunakan QR code yang telah dikirim sebelumnya.');
             });
-        }, 10000); // Tunggu 10 detik sebelum beralih ke pairing code
+        }, 15000); // Tunggu 15 detik sebelum beralih ke pairing code
     });
 
     // Event ketika client siap
