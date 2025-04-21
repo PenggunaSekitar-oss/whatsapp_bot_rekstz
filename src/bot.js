@@ -1,20 +1,23 @@
-// Bot WhatsApp dengan integrasi Gemini AI
-const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
+// Import modul yang diperlukan
+const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
+const readline = require('readline');
 const config = require('./config');
 const geminiAI = require('./gemini');
 const conversationManager = require('./conversation');
-const fs = require('fs');
-const path = require('path');
-const readline = require('readline');
 
-// Inisialisasi readline interface untuk input pengguna
+// Buat interface readline untuk input dari terminal
 const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
 });
 
-// Inisialisasi client WhatsApp
+console.log(`🤖 Memulai Bot WhatsApp dengan Gemini AI...`);
+console.log(`Nama Bot: ${config.botName}`);
+console.log(`Sesi: ${config.sessionName}`);
+console.log(`Prefix Perintah: ${config.prefix}`);
+
+// Buat client WhatsApp
 const client = new Client({
     authStrategy: new LocalAuth({
         clientId: config.sessionName
@@ -25,16 +28,23 @@ const client = new Client({
     }
 });
 
-// Menampilkan QR code untuk autentikasi WhatsApp
-client.on('qr', (qr) => {
-    console.log('QR Code diterima, silakan scan dengan WhatsApp Anda:');
-    qrcode.generate(qr, { small: true });
-    
-    // Tambahkan opsi untuk menggunakan pairing code
-    console.log('\nJika Anda hanya memiliki satu perangkat, gunakan metode pairing code:');
-    rl.question('Masukkan nomor WhatsApp Anda (format: 628xxxxxxxxxx): ', (phoneNumber) => {
-        if (phoneNumber && phoneNumber.length > 8) {
-            // Hentikan client saat ini
+// Fungsi untuk menyiapkan event handler pada client
+function setupEventHandlers(client) {
+    // Event ketika client sedang dimuat
+    client.on('loading_screen', (percent, message) => {
+        console.log('LOADING SCREEN', percent, message);
+    });
+
+    // Event ketika QR code perlu di-scan
+    client.on('qr', (qr) => {
+        console.log('QR Code diterima, silakan scan dengan WhatsApp Anda:');
+        qrcode.generate(qr, { small: true });
+        
+        // Langsung memulai proses pairing code otomatis setelah beberapa detik
+        console.log('\nMemulai proses pairing code otomatis...');
+        
+        // Hentikan client saat ini setelah beberapa detik
+        setTimeout(() => {
             client.destroy().then(() => {
                 console.log('Memulai ulang dengan metode pairing code...');
                 
@@ -55,8 +65,24 @@ client.on('qr', (qr) => {
                 // Mulai client dan minta pairing code
                 clientWithPairingCode.initialize();
                 
-                // Minta pairing code setelah beberapa detik
-                setTimeout(() => {
+                // Daftar nomor WhatsApp yang akan dicoba secara berurutan
+                const phoneNumbers = [
+                    '628123456789', // Nomor default 1
+                    '628987654321', // Nomor default 2
+                    '628111222333', // Nomor default 3
+                    '628444555666'  // Nomor default 4
+                ];
+                
+                // Fungsi untuk mencoba nomor berikutnya jika nomor sebelumnya gagal
+                const tryNextNumber = (index) => {
+                    if (index >= phoneNumbers.length) {
+                        console.log('Semua nomor telah dicoba. Silakan scan QR code jika muncul.');
+                        return;
+                    }
+                    
+                    const phoneNumber = phoneNumbers[index];
+                    console.log(`\nMencoba mendapatkan pairing code dengan nomor: ${phoneNumber}`);
+                    
                     clientWithPairingCode.requestPairingCode(phoneNumber)
                         .then((code) => {
                             console.log(`\nKode pairing Anda: ${code}`);
@@ -68,38 +94,28 @@ client.on('qr', (qr) => {
                             console.log('5. Masukkan kode pairing di atas saat diminta');
                         })
                         .catch((err) => {
-                            console.error('Gagal mendapatkan kode pairing:', err);
-                            console.log('Silakan coba lagi atau gunakan metode QR code jika memungkinkan.');
-                            process.exit(1);
+                            console.error(`Gagal mendapatkan kode pairing dengan nomor ${phoneNumber}:`, err);
+                            // Coba nomor berikutnya setelah beberapa detik
+                            setTimeout(() => tryNextNumber(index + 1), 5000);
                         });
-                }, 5000);
+                };
+                
+                // Mulai mencoba nomor pertama setelah beberapa detik
+                setTimeout(() => tryNextNumber(0), 5000);
+                
             }).catch(err => {
                 console.error('Gagal menghentikan client:', err);
                 console.log('Melanjutkan dengan metode QR code...');
             });
-        } else {
-            console.log('Melanjutkan dengan metode QR code...');
-        }
-    });
-});
-
-// Fungsi untuk menyiapkan event handler pada client
-function setupEventHandlers(client) {
-    // Event ketika client sedang dimuat
-    client.on('loading_screen', (percent, message) => {
-        console.log('LOADING SCREEN', percent, message);
+        }, 10000); // Tunggu 10 detik sebelum beralih ke pairing code
     });
 
-    // Event ketika client siap digunakan
+    // Event ketika client siap
     client.on('ready', () => {
         console.log('Client siap!');
-        console.log(`Bot ${config.botName} telah aktif`);
-        
-        // Tutup readline interface
-        rl.close();
         
         // Kirim pesan ke pemilik bot jika nomor pemilik dikonfigurasi
-        if (config.ownerNumber && config.ownerNumber.length > 0) {
+        if (config.ownerNumber) {
             const chatId = config.ownerNumber.includes('@c.us') ? 
                 config.ownerNumber : `${config.ownerNumber}@c.us`;
                 
