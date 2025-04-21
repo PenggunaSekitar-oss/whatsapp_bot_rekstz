@@ -1,7 +1,6 @@
 // Import modul yang diperlukan
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
-const QRCode = require('qrcode');
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
@@ -9,6 +8,13 @@ const config = require('./config');
 const geminiAI = require('./gemini');
 const conversationManager = require('./conversation');
 const telegramBot = require('./telegram');
+const qrUtils = require('./qrcode-utils');
+
+// Direktori untuk menyimpan QR code
+const QR_CODE_DIR = path.join(__dirname, '..', 'temp');
+if (!fs.existsSync(QR_CODE_DIR)) {
+  fs.mkdirSync(QR_CODE_DIR, { recursive: true });
+}
 
 // Buat interface readline untuk input dari terminal
 const rl = readline.createInterface({
@@ -42,113 +48,116 @@ function setupEventHandlers(client) {
 
     // Event ketika QR code perlu di-scan
     client.on('qr', async (qr) => {
-        console.log('QR Code diterima, silakan scan dengan WhatsApp Anda:');
-        
-        // Tampilkan QR code di terminal dengan ukuran kecil
-        qrcode.generate(qr, { small: true });
-        
-        // Buat QR code yang lebih jelas untuk ditampilkan di log
         try {
-            // Buat direktori temp jika belum ada
-            const tempDir = path.join(__dirname, '..', 'temp');
-            if (!fs.existsSync(tempDir)) {
-                fs.mkdirSync(tempDir, { recursive: true });
+            console.log('QR Code diterima, silakan scan dengan WhatsApp Anda:');
+            
+            // Tampilkan QR code di terminal dengan ukuran kecil
+            qrcode.generate(qr, { small: true });
+            
+            // Buat QR code yang lebih jelas sebagai file gambar
+            const qrImagePath = path.join(QR_CODE_DIR, 'whatsapp-qr.png');
+            await qrUtils.generateQRCodeImage(qr, qrImagePath);
+            console.log(`QR code yang lebih jelas telah disimpan di: ${qrImagePath}`);
+            
+            // Buat QR code ASCII yang lebih besar
+            const qrAscii = await qrUtils.generateQRCodeASCII(qr, false);
+            console.log('QR Code ASCII yang lebih jelas:');
+            console.log(qrAscii);
+            
+            // Kirim QR code ke Telegram
+            try {
+                // Kirim pesan ke Telegram
+                telegramBot.sendMessage('QR Code telah diterima. Mengirimkan QR code yang lebih jelas...');
+                
+                // Kirim QR code ASCII ke Telegram
+                telegramBot.sendQRCode(qrAscii);
+                
+                // Coba kirim file QR code sebagai gambar jika memungkinkan
+                if (fs.existsSync(qrImagePath)) {
+                    telegramBot.sendImage(qrImagePath, 'QR Code WhatsApp');
+                }
+            } catch (telegramError) {
+                console.error('Error saat mengirim QR code ke Telegram:', telegramError);
             }
             
-            // Buat QR code sebagai file gambar dengan opsi untuk meningkatkan kejelasan
-            const qrImagePath = path.join(tempDir, 'whatsapp_qr_console.png');
-            await QRCode.toFile(qrImagePath, qr, {
-                errorCorrectionLevel: 'H',
-                type: 'png',
-                quality: 1.0,
-                margin: 4,
-                scale: 8
-            });
+            // Langsung memulai proses pairing code otomatis setelah beberapa detik
+            console.log('\nMemulai proses pairing code otomatis...');
             
-            console.log(`QR code yang lebih jelas telah disimpan di: ${qrImagePath}`);
-        } catch (error) {
-            console.error('Error saat membuat file QR code:', error);
-        }
-        
-        // Kirim QR code ke Telegram
-        await telegramBot.sendQRCode(qr);
-        await telegramBot.sendMessage('QR Code telah dikirim. Jika tidak dapat melihat QR code dengan jelas, tunggu sebentar untuk mendapatkan pairing code.');
-        
-        // Langsung memulai proses pairing code otomatis setelah beberapa detik
-        console.log('\nMemulai proses pairing code otomatis...');
-        
-        // Hentikan client saat ini setelah beberapa detik
-        setTimeout(() => {
-            client.destroy().then(() => {
-                console.log('Memulai ulang dengan metode pairing code...');
-                
-                // Buat client baru dengan dukungan pairing code
-                const clientWithPairingCode = new Client({
-                    authStrategy: new LocalAuth({
-                        clientId: config.sessionName
-                    }),
-                    puppeteer: {
-                        headless: true,
-                        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-accelerated-2d-canvas', '--no-first-run', '--no-zygote', '--single-process', '--disable-gpu']
-                    }
+            // Hentikan client saat ini setelah beberapa detik
+            setTimeout(() => {
+                client.destroy().then(() => {
+                    console.log('Memulai ulang dengan metode pairing code...');
+                    
+                    // Buat client baru dengan dukungan pairing code
+                    const clientWithPairingCode = new Client({
+                        authStrategy: new LocalAuth({
+                            clientId: config.sessionName
+                        }),
+                        puppeteer: {
+                            headless: true,
+                            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-accelerated-2d-canvas', '--no-first-run', '--no-zygote', '--single-process', '--disable-gpu']
+                        }
+                    });
+                    
+                    // Salin semua event handler dari client lama
+                    setupEventHandlers(clientWithPairingCode);
+                    
+                    // Mulai client dan minta pairing code
+                    clientWithPairingCode.initialize();
+                    
+                    // Daftar nomor WhatsApp yang akan dicoba secara berurutan
+                    const phoneNumbers = [
+                        '6287755164724', // Nomor pengguna yang diberikan
+                        '628123456789', // Nomor cadangan 1
+                        '628987654321', // Nomor cadangan 2
+                        '628111222333', // Nomor cadangan 3
+                    ];
+                    
+                    // Fungsi untuk mencoba nomor berikutnya jika nomor sebelumnya gagal
+                    const tryNextNumber = (index) => {
+                        if (index >= phoneNumbers.length) {
+                            console.log('Semua nomor telah dicoba. Silakan scan QR code jika muncul.');
+                            telegramBot.sendMessage('Semua nomor telah dicoba. Silakan scan QR code jika muncul.');
+                            return;
+                        }
+                        
+                        const phoneNumber = phoneNumbers[index];
+                        console.log(`\nMencoba mendapatkan pairing code dengan nomor: ${phoneNumber}`);
+                        telegramBot.sendMessage(`Mencoba mendapatkan pairing code dengan nomor: ${phoneNumber}`);
+                        
+                        clientWithPairingCode.requestPairingCode(phoneNumber)
+                            .then((code) => {
+                                console.log(`\nKode pairing Anda: ${code}`);
+                                console.log('\nMasukkan kode ini di aplikasi WhatsApp Anda:');
+                                console.log('1. Buka WhatsApp di ponsel Anda');
+                                console.log('2. Ketuk Menu atau Pengaturan');
+                                console.log('3. Ketuk Perangkat Tertaut');
+                                console.log('4. Ketuk Tautkan Perangkat');
+                                console.log('5. Masukkan kode pairing di atas saat diminta');
+                                
+                                // Kirim pairing code ke Telegram
+                                telegramBot.sendPairingCode(code);
+                            })
+                            .catch((err) => {
+                                console.error(`Gagal mendapatkan kode pairing dengan nomor ${phoneNumber}:`, err);
+                                telegramBot.sendMessage(`Gagal mendapatkan kode pairing dengan nomor ${phoneNumber}. Mencoba nomor berikutnya...`);
+                                // Coba nomor berikutnya setelah beberapa detik
+                                setTimeout(() => tryNextNumber(index + 1), 5000);
+                            });
+                    };
+                    
+                    // Mulai mencoba nomor pertama setelah beberapa detik
+                    setTimeout(() => tryNextNumber(0), 5000);
+                    
+                }).catch(err => {
+                    console.error('Gagal menghentikan client:', err);
+                    console.log('Melanjutkan dengan metode QR code...');
+                    telegramBot.sendMessage('Gagal beralih ke metode pairing code. Silakan gunakan QR code yang telah dikirim sebelumnya.');
                 });
-                
-                // Salin semua event handler dari client lama
-                setupEventHandlers(clientWithPairingCode);
-                
-                // Mulai client dan minta pairing code
-                clientWithPairingCode.initialize();
-                
-                // Daftar nomor WhatsApp yang akan dicoba secara berurutan
-                const phoneNumbers = [
-                    '6287755164724', // Nomor pengguna yang diberikan
-                    '628123456789', // Nomor cadangan 1
-                    '628987654321', // Nomor cadangan 2
-                    '628111222333', // Nomor cadangan 3
-                ];
-                
-                // Fungsi untuk mencoba nomor berikutnya jika nomor sebelumnya gagal
-                const tryNextNumber = (index) => {
-                    if (index >= phoneNumbers.length) {
-                        console.log('Semua nomor telah dicoba. Silakan scan QR code jika muncul.');
-                        telegramBot.sendMessage('Semua nomor telah dicoba. Silakan scan QR code jika muncul.');
-                        return;
-                    }
-                    
-                    const phoneNumber = phoneNumbers[index];
-                    console.log(`\nMencoba mendapatkan pairing code dengan nomor: ${phoneNumber}`);
-                    telegramBot.sendMessage(`Mencoba mendapatkan pairing code dengan nomor: ${phoneNumber}`);
-                    
-                    clientWithPairingCode.requestPairingCode(phoneNumber)
-                        .then((code) => {
-                            console.log(`\nKode pairing Anda: ${code}`);
-                            console.log('\nMasukkan kode ini di aplikasi WhatsApp Anda:');
-                            console.log('1. Buka WhatsApp di ponsel Anda');
-                            console.log('2. Ketuk Menu atau Pengaturan');
-                            console.log('3. Ketuk Perangkat Tertaut');
-                            console.log('4. Ketuk Tautkan Perangkat');
-                            console.log('5. Masukkan kode pairing di atas saat diminta');
-                            
-                            // Kirim pairing code ke Telegram
-                            telegramBot.sendPairingCode(code);
-                        })
-                        .catch((err) => {
-                            console.error(`Gagal mendapatkan kode pairing dengan nomor ${phoneNumber}:`, err);
-                            telegramBot.sendMessage(`Gagal mendapatkan kode pairing dengan nomor ${phoneNumber}. Mencoba nomor berikutnya...`);
-                            // Coba nomor berikutnya setelah beberapa detik
-                            setTimeout(() => tryNextNumber(index + 1), 5000);
-                        });
-                };
-                
-                // Mulai mencoba nomor pertama setelah beberapa detik
-                setTimeout(() => tryNextNumber(0), 5000);
-                
-            }).catch(err => {
-                console.error('Gagal menghentikan client:', err);
-                console.log('Melanjutkan dengan metode QR code...');
-                telegramBot.sendMessage('Gagal beralih ke metode pairing code. Silakan gunakan QR code yang telah dikirim sebelumnya.');
-            });
-        }, 15000); // Tunggu 15 detik sebelum beralih ke pairing code
+            }, 20000); // Tunggu 20 detik sebelum beralih ke pairing code (waktu lebih lama untuk memastikan QR code dapat di-scan)
+        } catch (error) {
+            console.error('Error saat memproses QR code:', error);
+        }
     });
 
     // Event ketika client siap

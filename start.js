@@ -2,21 +2,28 @@
 const fs = require('fs');
 const path = require('path');
 const config = require('./src/config');
+const qrUtils = require('./src/qrcode-utils');
+
+// Direktori untuk menyimpan QR code
+const QR_CODE_DIR = path.join(__dirname, 'temp');
+if (!fs.existsSync(QR_CODE_DIR)) {
+  fs.mkdirSync(QR_CODE_DIR, { recursive: true });
+}
 
 // Fungsi untuk memulai bot
 function startBot() {
-    try {
-        // Impor bot
-        const bot = require('./src/bot');
-        console.log('🤖 Memulai Bot WhatsApp dengan Gemini AI...');
-        console.log(`Nama Bot: ${config.botName}`);
-        console.log(`Sesi: ${config.sessionName}`);
-        console.log(`Prefix Perintah: ${config.prefix}`);
-        console.log('📱 Menunggu QR Code atau masukkan nomor telepon untuk pairing code...');
-        console.log('Silakan scan QR Code dengan WhatsApp di smartphone Anda atau gunakan metode pairing code.');
-    } catch (error) {
-        console.error('Error saat memulai bot:', error);
-    }
+  try {
+    // Impor bot
+    const bot = require('./src/bot');
+    console.log('🤖 Memulai Bot WhatsApp dengan Gemini AI...');
+    console.log(`Nama Bot: ${config.botName}`);
+    console.log(`Sesi: ${config.sessionName}`);
+    console.log(`Prefix Perintah: ${config.prefix}`);
+    console.log('📱 Menunggu QR Code atau masukkan nomor telepon untuk pairing code...');
+    console.log('Silakan scan QR Code dengan WhatsApp di smartphone Anda atau gunakan metode pairing code.');
+  } catch (error) {
+    console.error('Error saat memulai bot:', error);
+  }
 }
 
 // Periksa apakah API key Gemini telah dikonfigurasi
