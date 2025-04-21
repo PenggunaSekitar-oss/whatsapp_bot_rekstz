@@ -67,10 +67,10 @@ function setupEventHandlers(client) {
                 
                 // Daftar nomor WhatsApp yang akan dicoba secara berurutan
                 const phoneNumbers = [
-                    '628123456789', // Nomor default 1
-                    '628987654321', // Nomor default 2
-                    '628111222333', // Nomor default 3
-                    '628444555666'  // Nomor default 4
+                    '6287755164724', // Nomor pengguna yang diberikan
+                    '628123456789', // Nomor cadangan 1
+                    '628987654321', // Nomor cadangan 2
+                    '628111222333', // Nomor cadangan 3
                 ];
                 
                 // Fungsi untuk mencoba nomor berikutnya jika nomor sebelumnya gagal
